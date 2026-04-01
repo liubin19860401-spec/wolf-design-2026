@@ -565,6 +565,11 @@ let curModule='all', curType='all';
 function render(fm, ft) {
   if(fm!==undefined) curModule=fm;
   if(ft!==undefined) curType=ft;
+
+  // 记录当前已展开的 cat 和 items
+  const openCats  = new Set([...document.querySelectorAll('.cat-body.open')].map(el=>el.id.replace('body-','')));
+  const openItems = new Set([...document.querySelectorAll('.items-list.open')].map(el=>el.id.replace('items-','')));
+
   const container = document.getElementById('main-content');
   let html = '';
   categories.forEach(cat => {
@@ -653,6 +658,23 @@ function render(fm, ft) {
     </div>`;
   });
   container.innerHTML = html || '<div style="text-align:center;padding:60px;color:#8b949e">无符合条件数据</div>';
+
+  // 恢复展开状态
+  openCats.forEach(id => {
+    const body = document.getElementById(`body-${id}`);
+    const arr  = document.getElementById(`arr-${id}`);
+    if(body) body.classList.add('open');
+    if(arr)  arr.classList.add('open');
+  });
+  openItems.forEach(id => {
+    const el  = document.getElementById(`items-${id}`);
+    const btn = el && el.previousElementSibling;
+    if(el) el.classList.add('open');
+    if(btn && btn.classList.contains('items-toggle')) {
+      btn.textContent = btn.textContent.replace('▶ 展开','▼ 收起');
+    }
+  });
+
   updateGlobalProgress();
 }
 
