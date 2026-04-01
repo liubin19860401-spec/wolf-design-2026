@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>近战与控制反馈汇总 2026</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<!-- Firebase SDK (compat 版本，直接在 HTML 中使用) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Microsoft YaHei',sans-serif;background:#0d1117;color:#c9d1d9;}
+/* ---- Header ---- */
+.header{background:linear-gradient(135deg,#1a1f2e,#0d1117);padding:24px 40px 16px;border-bottom:2px solid #21262d;}
+.header h1{font-size:24px;color:#58a6ff;margin-bottom:6px;}
+.header p{color:#8b949e;font-size:13px;}
+/* ---- Global Progress ---- */
+.global-progress{background:#161b22;padding:16px 40px;border-bottom:1px solid #21262d;}
+.gp-row{display:flex;align-items:center;gap:14px;}
+.gp-label{color:#e6edf3;font-size:14px;font-weight:bold;white-space:nowrap;}
+.gp-bar-wrap{flex:1;background:#21262d;border-radius:10px;height:14px;overflow:hidden;}
+.gp-bar{height:100%;background:linear-gradient(90deg,#238636,#3fb950);border-radius:10px;transition:width .4s;}
+.gp-pct{color:#3fb950;font-size:14px;font-weight:bold;white-space:nowrap;min-width:45px;}
+.gp-detail{color:#8b949e;font-size:12px;white-space:nowrap;}
+/* ---- Stats ---- */
+.stats{display:flex;gap:14px;padding:16px 40px;flex-wrap:wrap;}
+.stat-card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:12px 20px;min-width:130px;text-align:center;}
+.stat-card .num{font-size:26px;font-weight:bold;}
+.stat-card .label{font-size:11px;color:#8b949e;margin-top:3px;}
+.red{color:#f85149;} .blue{color:#58a6ff;} .green{color:#3fb950;} .orange{color:#e3b341;}
+/* ---- Filter Bar ---- */
+.filter-bar{display:flex;gap:8px;padding:12px 40px;flex-wrap:wrap;align-items:center;background:#161b22;border-bottom:1px solid #21262d;}
+.filter-bar span{color:#8b949e;font-size:12px;}
+.btn{padding:5px 13px;border-radius:20px;border:1px solid #30363d;background:#21262d;color:#c9d1d9;cursor:pointer;font-size:12px;transition:all .2s;}
+.btn:hover,.btn.active{background:#58a6ff;border-color:#58a6ff;color:#fff;}
+.btn-export{background:#238636;border-color:#238636;color:#fff;margin-left:auto;}
+.btn-export:hover{background:#2ea043;}
+/* ---- Category Block ---- */
+.main{padding:20px 40px;}
+.category-block{margin-bottom:24px;border:1px solid #21262d;border-radius:10px;overflow:hidden;}
+.cat-header{display:flex;align-items:center;gap:10px;padding:12px 18px;background:#161b22;cursor:pointer;user-select:none;}
+.cat-header:hover{background:#1c2128;}
+.cat-title{font-size:14px;font-weight:bold;color:#e6edf3;flex:1;}
+.cat-count{background:#21262d;color:#8b949e;padding:2px 9px;border-radius:10px;font-size:11px;}
+.priority-badge{padding:2px 7px;border-radius:4px;font-size:11px;background:#3d0a0a;color:#f85149;font-weight:bold;}
+.module-tag{padding:2px 7px;border-radius:4px;font-size:11px;background:#21262d;color:#8b949e;}
+.arrow{color:#8b949e;font-size:11px;transition:transform .3s;}
+.arrow.open{transform:rotate(90deg);}
+/* ---- Cat Progress ---- */
+.cat-progress{padding:8px 18px 4px;background:#161b22;border-top:1px solid #21262d;}
+.cp-row{display:flex;align-items:center;gap:10px;}
+.cp-label{font-size:12px;color:#8b949e;}
+.cp-bar-wrap{flex:1;background:#21262d;border-radius:6px;height:8px;overflow:hidden;}
+.cp-bar{height:100%;background:linear-gradient(90deg,#1f6feb,#58a6ff);border-radius:6px;transition:width .4s;}
+.cp-pct{font-size:12px;font-weight:bold;min-width:38px;}
+/* ---- Solution Table ---- */
+.cat-body{display:none;}
+.cat-body.open{display:block;}
+.solution-section{padding:12px 18px 8px;}
+.sol-title{color:#58a6ff;font-size:12px;font-weight:bold;margin-bottom:8px;}
+.sol-table{width:100%;border-collapse:collapse;font-size:12px;}
+.sol-table th{background:#1c2128;color:#8b949e;padding:7px 8px;text-align:left;border:1px solid #21262d;white-space:nowrap;font-weight:normal;}
+.sol-table td{border:1px solid #21262d;padding:5px 7px;vertical-align:middle;}
+.sol-table tr:hover td{background:#1c2128;}
+.sol-text{color:#c9d1d9;line-height:1.5;min-width:180px;}
+td input[type=text],td input[type=date]{background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:3px 6px;border-radius:4px;font-size:12px;width:100%;outline:none;}
+td input[type=text]:focus,td input[type=date]:focus{border-color:#58a6ff;}
+td input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:#3fb950;}
+.done-row td{opacity:.55;}
+.done-row .sol-text{text-decoration:line-through;color:#8b949e;}
+/* ---- Feedback Items ---- */
+.items-section{padding:0 18px 14px;}
+.items-toggle{color:#8b949e;font-size:12px;cursor:pointer;padding:6px 0;display:inline-block;}
+.items-toggle:hover{color:#58a6ff;}
+.items-list{display:none;margin-top:6px;}
+.items-list.open{display:block;}
+.item{background:#161b22;border:1px solid #21262d;border-radius:5px;padding:10px 14px;margin-bottom:6px;}
+.item-top{display:flex;gap:7px;align-items:center;margin-bottom:5px;}
+.item-id{background:#21262d;color:#8b949e;padding:1px 6px;border-radius:3px;font-size:11px;font-family:monospace;}
+.tag-bug{background:#3d0a0a;color:#f85149;padding:1px 6px;border-radius:3px;font-size:11px;}
+.tag-suggest{background:#0d2136;color:#58a6ff;padding:1px 6px;border-radius:3px;font-size:11px;}
+.tag-exp{background:#1c1c0a;color:#e3b341;padding:1px 6px;border-radius:3px;font-size:11px;}
+.conf-high{background:#0d2b0d;color:#3fb950;padding:1px 6px;border-radius:3px;font-size:11px;}
+.conf-mid{background:#1c1c0a;color:#e3b341;padding:1px 6px;border-radius:3px;font-size:11px;}
+.conf-low{background:#1c1408;color:#d29922;padding:1px 6px;border-radius:3px;font-size:11px;}
+.item-zh{color:#e6edf3;font-size:12px;line-height:1.5;margin-bottom:3px;}
+.item-en{color:#8b949e;font-size:11px;font-style:italic;}
+.module-near .cat-header{border-left:3px solid #f85149;}
+.module-3c .cat-header{border-left:3px solid #58a6ff;}
+.module-near{border-color:#f85149;}
+.module-3c{border-color:#58a6ff;}
+/* ---- Lock Bar ---- */
+.lock-bar{display:flex;align-items:center;gap:10px;padding:9px 40px;background:#161b22;border-bottom:2px solid #f85149;flex-wrap:wrap;}
+.lock-bar.unlocked{border-bottom-color:#238636;background:#0d1f14;}
+.lock-status{font-size:13px;font-weight:bold;color:#f85149;flex:1;}
+.lock-bar.unlocked .lock-status{color:#3fb950;}
+.lock-bar input[type=password]{background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:5px 10px;border-radius:6px;font-size:13px;width:180px;outline:none;}
+.lock-bar input[type=password]:focus{border-color:#58a6ff;}
+.lock-btn{padding:5px 16px;border-radius:6px;border:none;background:#d29922;color:#000;font-size:13px;font-weight:bold;cursor:pointer;}
+.lock-btn:hover{background:#e3b341;}
+.lock-err{color:#f85149;font-size:12px;}
+/* ---- Type Progress Panel ---- */
+.type-progress-panel{background:#0d1117;padding:10px 40px 16px;border-bottom:1px solid #21262d;display:flex;align-items:flex-start;gap:0;}
+.tp-section{flex:1;}
+.tp-section-title{font-size:11px;color:#8b949e;font-weight:bold;letter-spacing:.5px;margin-bottom:10px;text-transform:uppercase;}
+.tp-cards{display:flex;gap:10px;flex-wrap:wrap;}
+.tp-card{flex:1;min-width:140px;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:10px 14px;}
+.tp-card-head{display:flex;align-items:center;gap:6px;margin-bottom:7px;}
+.tp-icon{font-size:14px;}
+.tp-name{flex:1;font-size:12px;color:#c9d1d9;font-weight:bold;}
+.tp-pct{font-size:16px;font-weight:bold;min-width:42px;text-align:right;}
+.tp-bar-wrap{background:#21262d;border-radius:6px;height:7px;overflow:hidden;margin-bottom:5px;}
+.tp-bar{height:100%;border-radius:6px;transition:width .5s ease;}
+.tp-detail{font-size:11px;color:#8b949e;}
+/* 近战 - 红 */
+.tp-near{border-color:#30101a;}
+.tp-bar-near{background:linear-gradient(90deg,#a01010,#f85149);}
+.tp-near .tp-pct{color:#f85149;}
+/* 3C - 蓝 */
+.tp-3c{border-color:#0d1f36;}
+.tp-bar-3c{background:linear-gradient(90deg,#1a4a8a,#58a6ff);}
+.tp-3c .tp-pct{color:#58a6ff;}
+/* Bug - 橙红 */
+.tp-bug{border-color:#2b1010;}
+.tp-bar-bug{background:linear-gradient(90deg,#8a2020,#ff6b6b);}
+.tp-bug .tp-pct{color:#ff6b6b;}
+/* 建议 - 蓝绿 */
+.tp-sug{border-color:#0a2030;}
+.tp-bar-sug{background:linear-gradient(90deg,#1a6a8a,#56c2e6);}
+.tp-sug .tp-pct{color:#56c2e6;}
+/* 体验 - 金黄 */
+.tp-exp{border-color:#2a2000;}
+.tp-bar-exp{background:linear-gradient(90deg,#8a6a00,#e3b341);}
+.tp-exp .tp-pct{color:#e3b341;}
+/* 面板分割线 */
+.tp-divider{width:1px;background:#21262d;margin:0 20px;align-self:stretch;}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🎮 近战与控制反馈汇总 2026</h1>
+  <p>玩家反馈分析报告 · 跟进人：刘彬、刘荣钊 · 共 120 条反馈</p>
+</div>
+
+<!-- 🔐 权限控制栏 -->
+<div class="lock-bar" id="lock-bar">
+  <span class="lock-status" id="lock-status">🔒 只读模式 · 仅查看数据，编辑需要输入密码</span>
+  <input type="password" id="pwd-input" placeholder="输入编辑密码..." onkeydown="if(event.key==='Enter')unlockEdit()">
+  <button class="lock-btn" id="lock-btn" onclick="unlockEdit()">🔓 解锁编辑</button>
+  <span class="lock-err" id="lock-err"></span>
+</div>
+
+<!-- ① 整体专项完成进度 -->
+<div class="global-progress">
+  <div class="gp-row">
+    <span class="gp-label">📊 专项整体完成进度</span>
+    <div class="gp-bar-wrap"><div class="gp-bar" id="gp-bar" style="width:0%"></div></div>
+    <span class="gp-pct" id="gp-pct">0%</span>
+    <span class="gp-detail" id="gp-detail">0 / 0 项优化完成</span>
+  </div>
+</div>
+
+<!-- ② 多维度进度统计面板 -->
+<div class="type-progress-panel">
+  <div class="tp-section">
+    <div class="tp-section-title">📦 按模块</div>
+    <div class="tp-cards">
+      <div class="tp-card tp-near">
+        <div class="tp-card-head">
+          <span class="tp-icon">⚔️</span>
+          <span class="tp-name">近战模块</span>
+          <span class="tp-pct" id="tp-pct-near">0%</span>
+        </div>
+        <div class="tp-bar-wrap"><div class="tp-bar tp-bar-near" id="tp-bar-near" style="width:0%"></div></div>
+        <div class="tp-detail" id="tp-det-near">0 / 0 项</div>
+      </div>
+      <div class="tp-card tp-3c">
+        <div class="tp-card-head">
+          <span class="tp-icon">🎮</span>
+          <span class="tp-name">3C控制模块</span>
+          <span class="tp-pct" id="tp-pct-3c">0%</span>
+        </div>
+        <div class="tp-bar-wrap"><div class="tp-bar tp-bar-3c" id="tp-bar-3c" style="width:0%"></div></div>
+        <div class="tp-detail" id="tp-det-3c">0 / 0 项</div>
+      </div>
+    </div>
+  </div>
+  <div class="tp-divider"></div>
+  <div class="tp-section">
+    <div class="tp-section-title">🏷️ 按反馈类型</div>
+    <div class="tp-cards">
+      <div class="tp-card tp-bug">
+        <div class="tp-card-head">
+          <span class="tp-icon">🐛</span>
+          <span class="tp-name">Bug 类</span>
+          <span class="tp-pct" id="tp-pct-bug">0%</span>
+        </div>
+        <div class="tp-bar-wrap"><div class="tp-bar tp-bar-bug" id="tp-bar-bug" style="width:0%"></div></div>
+        <div class="tp-detail" id="tp-det-bug">0 / 0 项</div>
+      </div>
+      <div class="tp-card tp-sug">
+        <div class="tp-card-head">
+          <span class="tp-icon">💡</span>
+          <span class="tp-name">建议类</span>
+          <span class="tp-pct" id="tp-pct-suggest">0%</span>
+        </div>
+        <div class="tp-bar-wrap"><div class="tp-bar tp-bar-sug" id="tp-bar-suggest" style="width:0%"></div></div>
+        <div class="tp-detail" id="tp-det-suggest">0 / 0 项</div>
+      </div>
+      <div class="tp-card tp-exp">
+        <div class="tp-card-head">
+          <span class="tp-icon">⚡</span>
+          <span class="tp-name">体验类</span>
+          <span class="tp-pct" id="tp-pct-exp">0%</span>
+        </div>
+        <div class="tp-bar-wrap"><div class="tp-bar tp-bar-exp" id="tp-bar-exp" style="width:0%"></div></div>
+        <div class="tp-detail" id="tp-det-exp">0 / 0 项</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat-card"><div class="num red">120</div><div class="label">总反馈条数</div></div>
+  <div class="stat-card"><div class="num red">68</div><div class="label">Bug 类</div></div>
+  <div class="stat-card"><div class="num blue">41</div><div class="label">建议类</div></div>
+  <div class="stat-card"><div class="num orange">11</div><div class="label">体验类</div></div>
+  <div class="stat-card"><div class="num green">13</div><div class="label">问题分类数</div></div>
+  <div class="stat-card"><div class="num red">🔥 17</div><div class="label">竖向翻转失效（高频）</div></div>
+</div>
+<div class="filter-bar">
+  <span>筛选模块：</span>
+  <button class="btn active" onclick="filterModule('all',this)">全部</button>
+  <button class="btn" onclick="filterModule('near',this)">⚔️ 近战</button>
+  <button class="btn" onclick="filterModule('3c',this)">🎮 3C控制</button>
+  <span style="margin-left:10px">筛选类型：</span>
+  <button class="btn active2" onclick="filterType('all',this)">全部</button>
+  <button class="btn" onclick="filterType('bug',this)">🐛 Bug</button>
+  <button class="btn" onclick="filterType('suggest',this)">💡 建议</button>
+  <button class="btn" onclick="filterType('exp',this)">⚡ 体验</button>
+  <!-- ④ 导出按钮 -->
+  <button class="btn btn-export" onclick="exportExcel()">📥 导出表格</button>
+</div>
+<div class="main" id="main-content"></div>
+<script>
+// ─── 数据定义 ────────────────────────────────────────────
+const categories = [
+// ═══════════════════════ 近战模块 ═══════════════════════
+{
+  id:'near-1', module:'near', title:'攻击命中缺陷', icon:'⚔️',
+  mainType:'bug', priority:true,
+  solution:['检查近战攻击碰撞体半径与攻击动作帧同步是否一致','修复近战攻击命中判定逻辑，确保挥击动作触发碰撞检测','新增攻击命中音效/特效反馈，增强打击感','增加近战命中容错范围，避免明显挥空'],
+  items:[
+    {id:1, zh:'近战攻击怪物时并非每次都能命中，反而会让怪物白嫖伤害', en:'Melee attacks dont always hit when attacking enemies thus giving the enemy free damage', type:'Bug', conf:'高'},
+    {id:913, zh:'游戏开始时尝试击中AI敌人，挥动球棒但没有造成伤害', en:'trying to hit ai enemy start of game. Swinging bat but not damage', type:'Bug', conf:'高'},
+  ]
+},
+{
+  id:'near-2', module:'near', title:'输入延迟与流畅性', icon:'⚡',
+  mainType:'exp', priority:true,
+  solution:['优化近战处决的输入缓冲窗口，减少操作提示与实际响应的延迟','提升连招处决流畅度，修复冲锋攻击时多个处决提示堆叠的问题','针对快速输入增加更大的输入容错时间窗口'],
+  items:[
+    {id:15, zh:'近战处决存在轻微输入延迟，冲锋时操作提示与输入不同步，连续攻击敌人时会出现多个处决提示但输入延迟', en:'Their is a slight input delay on mele exections, promt is not fluid with input', type:'体验', conf:'高'},
+  ]
+},
+{
+  id:'near-3', module:'near', title:'近战按键绑定优化', icon:'🎮',
+  mainType:'suggest',
+  solution:['将快速近战攻击键从R3调整至R1，减少误操作概率','提供快速近战攻击多方案选项（连按/长按均可触发）','增加控制器按键自定义功能，允许玩家自行重映射近战键位'],
+  items:[
+    {id:18, zh:'刀具按钮应提供快速攻击（连按右操作杆）选项，或允许长按操作杆1-2秒后使用右扳机键发动攻击', en:'the knife button should have an option to do the quick attack or give the option to HOLD the thumbstick', type:'建议', conf:'高'},
+    {id:28, zh:'建议调整快速近战攻击键：当前绑定在R3（摇杆键）不如改到R1更合理，毕竟R1仅在驾驶载具时有功能', en:'please change the fast melee attack button. It is bound to the R3 (joystick)', type:'建议', conf:'高'},
+  ]
+},
+{
+  id:'near-4', module:'near', title:'近战选项与武器获取', icon:'🗡️',
+  mainType:'suggest',
+  solution:['规划更多近战武器种类，包括刀、棍、钝器等多类型','增加近战连招与特殊处决动作','优化教程结束后近战武器的自然获取路径，降低获取门槛','在开放世界中增加近战武器的刷新点位'],
+  items:[
+    {id:70, zh:'游戏很棒，就是希望能有更多近战选项', en:'The game is great, just wish there was more melee options', type:'建议', conf:'高'},
+    {id:92, zh:'教程结束后应更自然便捷地获取近战武器——我在教程里可没少用棒球棍', en:'Melee weapons need to be able to be obtained easier and more naturally after the tutorial', type:'体验', conf:'高'},
+  ]
+},
+// ═══════════════════════ 3C模块 ═══════════════════════
+{
+  id:'3c-1', module:'3c', title:'🔥 竖向翻转设置失效（最高频Bug）', icon:'🔄',
+  mainType:'bug', priority:true,
+  solution:['【P0级修复】修复Y轴反转设置在战斗/瞄准时自动重置为默认的严重Bug','排查OTS肩射瞄准、辅助瞄准、技能使用、FP视角切换等所有导致设置重置的触发点','统一竖向反转设置的持久化存储逻辑，确保跨场景保持','修复退出构建模式/偏差技能使用后反转失效的边界情况','增加设置页面"反转锁定"选项，防止系统自动覆盖'],
+  items:[
+    {id:214, zh:'使用控制器战斗时，垂直视角反向输入会随机变化。这对许多玩家来说是破坏游戏体验的严重漏洞', en:'Inverted vertical look input will change randomly in combat using a controller', type:'Bug', conf:'高'},
+    {id:356, zh:'按钮操作导致垂直反转关闭（按R3以外按钮即失效）', en:'Every time a button (besides R3) is pressed, vertical invert is turned off', type:'Bug', conf:'高'},
+    {id:366, zh:'垂直反转瞄准失效，营地放置方向失灵', en:'Invert vertical does not work when enemy in sights', type:'Bug', conf:'高'},
+    {id:403, zh:'战斗时镜头反转失效', en:'Camera inversion stops in combat', type:'Bug', conf:'高'},
+    {id:414, zh:'Y轴反转设置异常，靠近敌人时自动恢复默认（PS5 Pro）', en:'Inverted Y axis is not working properly. Every time you get close to an enemy it switches back to default', type:'Bug', conf:'高'},
+    {id:416, zh:'Xbox版Y轴反转设置异常，瞄准武器时尤为明显', en:'Xbox Series X, Invert Y Axis setting keeps dropping during gameplay', type:'Bug', conf:'高'},
+    {id:418, zh:'垂直反转功能异常，随机切换', en:'Invert vertical is broken. Swaps back and forth randomly', type:'Bug', conf:'高'},
+    {id:495, zh:'PS5视角反转BUG，瞄准时偶尔恢复默认', en:'inverted camera issues, when ads it sometimes goes back to normal camera settings', type:'Bug', conf:'高'},
+    {id:827, zh:'使用偏差技能会完全移除开启后的垂直反转控制', en:'using a deviation skill completely removes inverted vertical controls when turned on', type:'Bug', conf:'高'},
+    {id:868, zh:'进入战斗后Y轴反转重置，退出战斗后恢复', en:'selected invert y/horizontal in settings. This worked until I entered a battle, then it reset', type:'Bug', conf:'高'},
+    {id:885, zh:'开启反转后，跑过敌人身边时反转功能恢复原状（疑与辅助瞄准有关）', en:'when running by enemies it causes the invert to revert', type:'Bug', conf:'高'},
+    {id:893, zh:'退出构建模式后，反转控制器垂直输入会恢复原状', en:'After exiting build mode, Invert controller vertical input reverts', type:'Bug', conf:'高'},
+    {id:1039, zh:'控制反转无法保持：肩射瞄准约1秒后恢复默认，仅在战斗中出现，重启无效', en:'Control inversion does not stick. It reverts after OTS aiming', type:'Bug', conf:'高'},
+    {id:1088, zh:'玩家更改的镜头反转设置会自动恢复为默认，教程中/马尼巴斯切换FP均有复现', en:'Player changed camera inversion reverting to default inversion setting on its own', type:'Bug', conf:'高'},
+    {id:1139, zh:'瞄准敌人时，反向瞄准控制会切换回正常瞄准，严重影响游戏体验', en:'when aiming at enemies, inverted aiming controls switches back to normal aiming', type:'Bug', conf:'高'},
+    {id:1206, zh:'教程过程中即使选择了反向垂直控制仍然失效，取消重选/重启均无效', en:'During the tutorial inverted vertical controls were lost despite being chosen', type:'Bug', conf:'高'},
+    {id:1235, zh:'Y轴反转在瞄准/调整视角时自动重置，似乎发生在游戏引导任务期间', en:'When selecting inverted for the y-axis, sometimes during aiming it resets back to non-inverted', type:'Bug', conf:'高'},
+  ]
+},
+{
+  id:'3c-2', module:'3c', title:'摇杆漂移与灵敏度', icon:'🕹️',
+  mainType:'bug', priority:true,
+  solution:['增加游戏内/菜单内独立死区滑块设置，分别控制游戏角色移动和UI光标的死区','修复PS5/Xbox菜单光标随机向右漂移的Bug','优化摇杆灵敏度曲线，支持轻推走路/重推奔跑的分段控制','修复采矿等特定操作后角色原地踏步的摇杆卡顿','修复菜单光标速度不一致问题，增加主机端光标速度独立设置'],
+  items:[
+    {id:13, zh:'优化PS5左模拟操作杆，轻微推动操作杆时角色移动幅度过大', en:'Refine the left analog Stick on ps5. Character moves too much with little pushes to the Stick', type:'体验', conf:'高'},
+    {id:30, zh:'应该移除控制器随机自动移动的功能', en:'The random automatic movement on controller should be removed', type:'Bug', conf:'中'},
+    {id:31, zh:'优化控制器手感使其更顺滑，即使将盲区设为0仍感觉存在内置盲区', en:'update the feel of controller so its smoother, even setting deadzone to 0 still feels like built in deadzone', type:'体验', conf:'高'},
+    {id:39, zh:'建议降低控制器操作杆灵敏度，当前轻微偏移就会触发', en:'make the controller sticks less sensitive as the slightest stick drift sets it off', type:'建议', conf:'中'},
+    {id:53, zh:'建议微调控制器灵敏度，游戏过程中注意到有漂移现象', en:'I noticed it drifting during gameplay', type:'Bug', conf:'高'},
+    {id:187, zh:'左侧操作杆在战斗中卡顿，菜单导航也存在延迟', en:'der linke stick zieht an einigen stellen vorallem in fights', type:'Bug', conf:'中'},
+    {id:190, zh:'PS5控制器操作杆在角色创建界面使用起来感觉迟缓且困难', en:'Controller stick on ps5 feels slow and difficult on character creation screen', type:'体验', conf:'高'},
+    {id:196, zh:'请为主机版添加光标速度设置，现在感觉太迟缓/不跟手', en:'Please give the console cursor settings it feels too slow/unresponsive', type:'建议', conf:'高'},
+    {id:197, zh:'PS5菜单界面的光标移动速度不一致', en:'cursor has inconsistent speeds when manuvering around menus. ps5', type:'Bug', conf:'高'},
+    {id:210, zh:'进入地图后左摇杆偶尔会出现卡住现象', en:'Once in the map left joystick gets stuck sometimes', type:'Bug', conf:'高'},
+    {id:218, zh:'非自动冲刺状态下行走时，松开操作杆后角色仍会持续移动', en:'when walking then releasing the stick the character continues in that direction', type:'Bug', conf:'高'},
+    {id:360, zh:'使用新手柄，菜单光标仍自动向右移动', en:'cursor will drag to the right repeatedly. not stick drift, using a brand new controller', type:'Bug', conf:'高'},
+    {id:562, zh:'采矿后角色因操作卡顿而无法原地行走', en:'stuck walking in place after mining sliver ore', type:'Bug', conf:'高'},
+    {id:927, zh:'请求为菜单光标添加独立死区滑块，PS5摇杆漂移问题导致现有死区对菜单光标无效', en:'Request deadzone slider for menu cursor. existing deadzone seems not to work for Menu cursor', type:'建议', conf:'高'},
+  ]
+},
+{
+  id:'3c-3', module:'3c', title:'角色异常移动', icon:'🏃',
+  mainType:'bug',
+  solution:['修复松开摇杆后角色持续滑行/移动的问题','修复构建模式下角色自动移动和输入延迟','修复左摇杆轻推导致无限奔跑（Xbox平台）','修复冲刺时角色横向偏移','修复自动奔跑意外触发的逻辑条件','增加移动响应速度设置选项'],
+  items:[
+    {id:54, zh:'奔跑时有时角色会停不下来', en:'When running sometimes person keeps going when u want to stop', type:'Bug', conf:'高'},
+    {id:328, zh:'移动速度慢（玩家反馈ID：3026）', en:'Running feels slow', type:'体验', conf:'中'},
+    {id:334, zh:'角色停止移动后仍继续滑动（3139）', en:'Sometimes when stopping movement the character keeps moving', type:'Bug', conf:'高'},
+    {id:346, zh:'角色自动移动且输入延迟，驾驶摩托车开灯时保持翘头状态（3304）', en:'Character moves by itself while in build mode and has input delay', type:'Bug', conf:'高'},
+    {id:396, zh:'左摇杆轻推导致无限奔跑，仅限本游戏，Xbox平台（2746）', en:'When u flick your left joystick u go into a infinite run on Xbox', type:'Bug', conf:'高'},
+    {id:438, zh:'角色自动移动（100003636）', en:'Bug my character move by herself', type:'Bug', conf:'高'},
+    {id:461, zh:'移动时出现Bug，自动奔跑自行触发（100004012）', en:'auto-run activates on its own', type:'Bug', conf:'高'},
+    {id:489, zh:'角色冲刺时横向移动（4102）', en:'Character appears to be running sideways while in Sprint mode', type:'Bug', conf:'高'},
+  ]
+},
+{
+  id:'3c-4', module:'3c', title:'死亡与重生卡死', icon:'💀',
+  mainType:'bug', priority:true,
+  solution:['修复死亡后无任何重生点可选导致卡死的问题','在新手区域设置初始保底重生点','修复脱困功能（Xbox X）无响应的Bug','优化死亡界面交互，死亡画面保持清晰直到玩家操作','修复特定场景下（如载具跳跃、任务失败后）死亡直接卡死的边界情况'],
+  items:[
+    {id:20, zh:'角色死亡时的模糊效果太伤眼睛，希望死亡画面保持静止直到玩家响应', en:'characters death where it get blurly tht hurting my eyes', type:'建议', conf:'高'},
+    {id:32, zh:'武器图标消失反复重登，角色死亡界面建议效仿COD开放世界机制', en:'weapon icon disappear had to relogin, character death screen suggestion', type:'建议', conf:'低'},
+    {id:293, zh:'封测角色无法重生（100003594）', en:'Closed beta character cant respawn', type:'Bug', conf:'中'},
+    {id:406, zh:'死亡后无法重生，只能缩放地图，重启游戏才修复（3652）', en:'attempted to respawn and no button prompt was allowing me to respawn', type:'Bug', conf:'中'},
+    {id:430, zh:'Xbox X无法使用脱困功能（4149）', en:'The unstuck is not working on Xbox X', type:'Bug', conf:'中'},
+    {id:434, zh:'角色死亡后无法复活，无可选重生点（100004061）', en:'stuck on death screen because there are no available respawn points', type:'Bug', conf:'中'},
+    {id:760, zh:'下载到剧情后角色已死亡，没有可用的重生点', en:'After downloading to the Scenario, the character was dead. There are no active rebirth points', type:'Bug', conf:'中'},
+    {id:792, zh:'新手区域无初始重生点，从V点跳下后无法重生（约8pm起一直卡顿）', en:'Need an initial respawn in the new player friendly area', type:'Bug', conf:'中'},
+    {id:1087, zh:'无法复活，队友也无法救我，一直卡在选择复活点的界面', en:'not letting me respawn or get revived by teammates', type:'Bug', conf:'高'},
+    {id:1204, zh:'我无法复活，请帮帮我', en:'I cant respawn pls help', type:'Bug', conf:'中'},
+  ]
+},
+{
+  id:'3c-5', module:'3c', title:'按键冲突与误触', icon:'⌨️',
+  mainType:'bug',
+  solution:['全面梳理R1/L1/X/△等高频按键的功能映射，避免同一按键承担过多功能','将敏感操作（如躺床、取水、放营地）改为长按触发，避免与短按功能冲突','修复L1+△营地放置指令失效的Bug','修复误触左摇杆进入PVP混乱状态的问题','修复时空技能键位不符合预期（主机版改为与PC一致的LB键）','增加按键冲突提示系统'],
+  items:[
+    {id:6, zh:'经常误按查看其他玩家简介的键来换弹，建议更改输入键', en:'change the input to open another players profile, i open it a lot trying to reload my gun', type:'建议', conf:'高'},
+    {id:17, zh:'过多功能绑定到R1键导致误操作，破坏R1+组合键功能（菜单/车灯/翻车）', en:'too much is set to r1 causing misinputs', type:'体验', conf:'中'},
+    {id:42, zh:'X键作为角色菜单按键不合理，与其他X键交互功能冲突', en:'X ist eine schlechte Taste fur das Menu von anderen Charakteren', type:'建议', conf:'高'},
+    {id:45, zh:'主机平台上某些操作需要按两次导致误触，建议改为长按触发（如躺床/取水）', en:'il serait interessant de changer certaines actions par maintenir touche daction', type:'建议', conf:'高'},
+    {id:297, zh:'放置营地的操作提示错误（3499）', en:'Says the wrong controls to place camp', type:'Bug', conf:'中'},
+    {id:341, zh:'L1+△营地功能失效（100003519）', en:'L1+triangle for the camp dont work for me', type:'Bug', conf:'中'},
+    {id:359, zh:'L1+△无法在露营地使用（3293）', en:'L1+triangle does not work for campsite', type:'Bug', conf:'中'},
+    {id:499, zh:'误触左摇杆进入PVP混乱状态（Xbox，3486）', en:'holding the left thumbstick immediately puts me in chaos state for PVP', type:'Bug', conf:'高'},
+    {id:632, zh:'建议将角色重塑滑块改为方向键左右，而非右摇杆', en:'suggestion for character reforge slider buttons to be left and right on D-Pad', type:'建议', conf:'中'},
+    {id:672, zh:'L1指令在尝试使用快捷栏食物时随机失效', en:'The L1 command has randomly stopped working when trying to eat food', type:'Bug', conf:'中'},
+    {id:718, zh:'将时空控制放在方向键上不合理，应保留PC版的LB键', en:'Spacetime being left on the d-pad is not a feel good change', type:'体验', conf:'高'},
+    {id:1158, zh:'L1+△没用，总是让喝汽水或装载风火轮', en:'L1+triangle didnt work to put down campsite. Kept making me drink sodas', type:'Bug', conf:'中'},
+  ]
+},
+{
+  id:'3c-6', module:'3c', title:'控制器布局与自定义', icon:'🛠️',
+  mainType:'suggest',
+  solution:['提供完整的控制器按键重映射功能（支持PS5/Xbox/PC）','增加行走速度分级设置（轻推走路/重推跑步）','支持陀螺仪辅助瞄准','支持PlayStation端鼠标键盘接入','增加自动冲刺的开关选项','提供多套预设布局（动作型/射击型/辅助型）','允许L3按键功能（冲刺切换）重映射到其他按键'],
+  items:[
+    {id:2, zh:'在设置中添加选项：当略微推动左操作杆时让角色行走', en:'Add an option to let character walk when slightly pushing the left stick forward', type:'建议', conf:'高'},
+    {id:24, zh:'添加陀螺仪瞄准会帮助习惯使用的玩家提升瞄准体验', en:'adding Gyro Aim would help others aim better', type:'建议', conf:'高'},
+    {id:44, zh:'支持鼠标和键盘操作', en:'Mouse and keyboard support', type:'建议', conf:'高'},
+    {id:49, zh:'为主机添加可调节的行走速度能让控制器操作更流畅', en:'it would be nice to have variable walking speeds for consoles', type:'建议', conf:'高'},
+    {id:50, zh:'需要关闭自动冲刺的设置选项', en:'The setting to turn off auto sprint', type:'建议', conf:'高'},
+    {id:203, zh:'希望能自定义Xbox控制器的按钮布局', en:'Be able to change button layout on Xbox controllers', type:'建议', conf:'高'},
+    {id:717, zh:'PlayStation端支持鼠标键盘（MnK）用MnK玩体验会流畅得多', en:'mouse and keyboard (MnK) support on playstation would be really appreciated', type:'建议', conf:'高'},
+    {id:768, zh:'需要更多控制器自定义选项，L3键多次按才能触发冲刺，影响有拇指伤的玩家', en:'need more options for controller customization, clicking L3 hurts my thumb injury', type:'建议', conf:'高'},
+  ]
+},
+{
+  id:'3c-7', module:'3c', title:'PC与主机控制统一', icon:'🖥️',
+  mainType:'suggest',
+  solution:['提供"PC布局"预设选项，允许主机玩家使用PC端控制器映射','统一PC和主机端指令轮、技能键的默认按键（如L1→LB）','保证跨平台Beta测试按键布局的一致性','允许主机端自定义键位对齐PC端'],
+  items:[
+    {id:4, zh:'除了PS5预设布局外，请增加PC控制器布局的选项', en:'Give option to use pc controller layout in addition to the ps5 made layout', type:'建议', conf:'高'},
+    {id:8, zh:'建议将主机控制器配置方案移植到PC端的Xbox控制器', en:'Model controller configuration to pc xbox controller', type:'建议', conf:'高'},
+    {id:51, zh:'建议让主机和PC端的控制器操作保持一致，避免按错按钮', en:'making controls for controllers be same between playing on pc and console would be good', type:'建议', conf:'高'},
+    {id:52, zh:'请允许重映射控制键位或保持与PC版一致', en:'Please let us remap the controls or make them the same as PC', type:'建议', conf:'高'},
+    {id:195, zh:'如果能将操作方式调整得更接近PC版会非常棒', en:'if you try to make the controls more similar to the PC version it would be nice', type:'建议', conf:'高'},
+    {id:201, zh:'有没有可能在主机上适配部分PC版控制器设置', en:'Is their any chance to match some of the pc version controller settings on console?', type:'建议', conf:'高'},
+    {id:1077, zh:'PS5指令轮控制应和PC一致：PC是按住L1，PS5是按住方向键下，难以习惯', en:'the command wheel control should be the same as pc. On PC its hold L1, PS5 its hold down dpad', type:'体验', conf:'高'},
+  ]
+},
+{
+  id:'3c-8', module:'3c', title:'镜头视角问题', icon:'📷',
+  mainType:'suggest',
+  solution:['增加越肩视角（OTS肩射）的禁用选项','支持简化一键切换肩部视角方向','增加更多第三人称镜头选项（越肩/写实/沉浸）','修复固定摄像机方向时小地图玩家指针不同步','修复教程中攀爬时镜头随机偏移','死亡模糊效果增加选项，可选关闭或减弱'],
+  items:[
+    {id:27, zh:'蹲伏翻滚机制需调整：翻滚应设为双击，蹲伏设为按压；第三人称瞄准应支持一键切肩', en:'the crouch roll mechanic the roll should just be double tap and crouch press', type:'体验', conf:'高'},
+    {id:29, zh:'在第一人称视角下显示mph移动速度', en:'Make the mph move in first person', type:'建议', conf:'中'},
+    {id:35, zh:'需要更多第三人称镜头选项，如越肩视角增强沉浸感', en:'More third-person camera options, over the shoulder perspective', type:'建议', conf:'高'},
+    {id:37, zh:'游戏需要真正的第一人称视角（能看到身体和腿），支持写实模式、自定义HUD、暗光照', en:'A game needs a true first-person view. Where you can see your body and your legs', type:'建议', conf:'高'},
+    {id:55, zh:'请添加禁用肩射模式（OTS）的选项', en:'Please add option to disable OTS', type:'建议', conf:'高'},
+    {id:384, zh:'教程中攀爬障碍时镜头随机偏移（3995）', en:'camera zooms off randomly during tutorial if climbing over barrier', type:'Bug', conf:'高'},
+    {id:502, zh:'方向盘无摄像头（3662）', en:'No camera in my wheel', type:'Bug', conf:'中'},
+    {id:752, zh:'启用固定摄像机方向后，小地图上玩家指针与摄像机方向不同步', en:'with camera direction fixed, the player pointer on minimap isnt syncing with the camera', type:'Bug', conf:'高'},
+  ]
+},
+];
+
+// ─── Firebase 初始化 ──────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyDdeQ01uvhQRUsNYtpGQnLv5EUD56IZKCY",
+  authDomain: "wolf-design-2026.firebaseapp.com",
+  databaseURL: "https://wolf-design-2026-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "wolf-design-2026",
+  storageBucket: "wolf-design-2026.firebasestorage.app",
+  messagingSenderId: "1020606488435",
+  appId: "1:1020606488435:web:ed2a821b9d33cfe2efaf06"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const trackingRef = db.ref('/tracking');
+
+// ─── 权限控制 ─────────────────────────────────────────────
+const EDIT_PASSWORD = 'wolf2026';   // ← 编辑密码，可自行修改
+let isEditor = false;
+let fbData = {};    // Firebase 数据本地缓存，实时同步
+
+function unlockEdit() {
+  const pwd = document.getElementById('pwd-input').value.trim();
+  if(pwd === EDIT_PASSWORD) {
+    isEditor = true;
+    document.getElementById('lock-bar').classList.add('unlocked');
+    document.getElementById('lock-status').textContent = '🔓 编辑模式 · 数据实时同步到云端';
+    document.getElementById('lock-btn').style.display = 'none';
+    document.getElementById('pwd-input').style.display = 'none';
+    document.getElementById('lock-err').textContent = '';
+    // 启用所有输入框
+    document.querySelectorAll('td input').forEach(el => el.disabled = false);
+  } else {
+    const errEl = document.getElementById('lock-err');
+    errEl.textContent = '❌ 密码错误，请重试';
+    document.getElementById('pwd-input').value = '';
+    setTimeout(() => errEl.textContent = '', 2500);
+  }
+}
+
+// ─── Firebase 数据层（替代 localStorage）────────────────
+function lsKey(catId, solIdx, field) { return `sol_${catId}_${solIdx}_${field}`; }
+function lsGet(k, def='') {
+  const v = fbData[k];
+  return (v !== undefined && v !== null) ? v : def;
+}
+function lsSave(k, v) {
+  if(!isEditor) return;   // 只读模式禁止写入
+  fbData[k] = v;          // 本地立即缓存
+  trackingRef.child(k).set(v === '' ? null : v);
+}
+
+// ─── 实时监听 Firebase 数据变化 ──────────────────────────
+trackingRef.on('value', snapshot => {
+  fbData = snapshot.val() || {};
+  render();
+});
+
+// ─── 进度计算 ────────────────────────────────────────────
+function getCatProgress(cat) {
+  let done = 0, total = cat.solution.length;
+  cat.solution.forEach((_, i) => {
+    if(lsGet(lsKey(cat.id, i, 'done'), '0') === '1') done++;
+  });
+  return {done, total, pct: total ? Math.round(done/total*100) : 0};
+}
+function updateGlobalProgress() {
+  let totalDone = 0, totalAll = 0;
+  categories.forEach(cat => {
+    const p = getCatProgress(cat);
+    totalDone += p.done; totalAll += p.total;
+  });
+  const pct = totalAll ? Math.round(totalDone/totalAll*100) : 0;
+  const bar = document.getElementById('gp-bar');
+  const pctEl = document.getElementById('gp-pct');
+  const detEl = document.getElementById('gp-detail');
+  if(bar) { bar.style.width = pct+'%'; }
+  if(pctEl) { pctEl.textContent = pct+'%'; pctEl.style.color = pct===100?'#f1e05a':pct>50?'#3fb950':'#58a6ff'; }
+  if(detEl) { detEl.textContent = `${totalDone} / ${totalAll} 项优化完成`; }
+  // 同步更新多维度进度
+  updateTypeProgress();
+}
+
+// ─── 多维度进度（按模块 & 按类型）────────────────────────
+function updateTypeProgress() {
+  // 统计维度定义 [维度key, 匹配字段, 匹配值, dom前缀]
+  const dims = [
+    { key:'near',    field:'module',   val:'near',    pfx:'near'    },
+    { key:'3c',      field:'module',   val:'3c',      pfx:'3c'      },
+    { key:'bug',     field:'mainType', val:'bug',     pfx:'bug'     },
+    { key:'suggest', field:'mainType', val:'suggest', pfx:'suggest' },
+    { key:'exp',     field:'mainType', val:'exp',     pfx:'exp'     },
+  ];
+  dims.forEach(dim => {
+    let done = 0, total = 0;
+    categories.forEach(cat => {
+      if(cat[dim.field] !== dim.val) return;
+      const p = getCatProgress(cat);
+      done += p.done; total += p.total;
+    });
+    const pct = total ? Math.round(done/total*100) : 0;
+    const pctColor = pct===100?'#f1e05a':pct>50?'#3fb950':undefined; // undefined = 用CSS默认色
+
+    const barEl = document.getElementById(`tp-bar-${dim.pfx}`);
+    const pctEl = document.getElementById(`tp-pct-${dim.pfx}`);
+    const detEl = document.getElementById(`tp-det-${dim.pfx}`);
+    if(barEl) barEl.style.width = pct+'%';
+    if(pctEl) {
+      pctEl.textContent = pct+'%';
+      if(pctColor) pctEl.style.color = pctColor;
+    }
+    if(detEl) detEl.textContent = `${done} / ${total} 项`;
+  });
+}
+function updateCatProgress(catId) {
+  const cat = categories.find(c=>c.id===catId); if(!cat) return;
+  const p = getCatProgress(cat);
+  const bar = document.getElementById(`cp-bar-${catId}`);
+  const pct = document.getElementById(`cp-pct-${catId}`);
+  if(bar) bar.style.width = p.pct+'%';
+  if(pct) { pct.textContent = p.pct+'%'; pct.style.color = p.pct===100?'#f1e05a':p.pct>50?'#3fb950':'#58a6ff'; }
+  updateGlobalProgress();
+}
+
+// ─── 辅助 ───────────────────────────────────────────────
+function confClass(c) {
+  return c==='高'?'conf-high':c.includes('中')?'conf-mid':'conf-low';
+}
+function typeTag(t) {
+  if(t==='Bug') return '<span class="tag-bug">🐛 Bug</span>';
+  if(t==='建议') return '<span class="tag-suggest">💡 建议</span>';
+  return '<span class="tag-exp">⚡ 体验</span>';
+}
+function moduleClass(m) { return m==='near'?'module-near':'module-3c'; }
+function moduleTag(m) { return m==='near'?'⚔️ 近战':'🎮 3C控制'; }
+
+// ─── 渲染 ────────────────────────────────────────────────
+let curModule='all', curType='all';
+
+function render(fm, ft) {
+  if(fm!==undefined) curModule=fm;
+  if(ft!==undefined) curType=ft;
+  const container = document.getElementById('main-content');
+  let html = '';
+  categories.forEach(cat => {
+    if(curModule!=='all' && cat.module!==curModule) return;
+    if(curType!=='all' && cat.mainType!==curType) return;
+    const mc = moduleClass(cat.module);
+    const priBadge = cat.priority ? '<span class="priority-badge">⚠ 高优先级</span>' : '';
+    const p = getCatProgress(cat);
+    const pctColor = p.pct===100?'#f1e05a':p.pct>50?'#3fb950':'#58a6ff';
+
+    // ── ① 优化点表格行 ──
+    const solRows = cat.solution.map((sol, i) => {
+      const k = (f) => lsKey(cat.id, i, f);
+      const isDone = lsGet(k('done'),'0')==='1';
+      const doneClass = isDone ? 'done-row' : '';
+      const dis = isEditor ? '' : 'disabled';
+      return `<tr class="${doneClass}" id="row-${cat.id}-${i}">
+        <td style="width:24px;text-align:center"><span style="color:#8b949e;font-size:11px">${i+1}</span></td>
+        <td class="sol-text">${sol}</td>
+        <td style="min-width:80px"><input type="text" ${dis} placeholder="策划姓名" value="${lsGet(k('planner'))}" onchange="saveField('${cat.id}',${i},'planner',this.value)"></td>
+        <td style="min-width:80px"><input type="text" ${dis} placeholder="程序姓名" value="${lsGet(k('dev'))}" onchange="saveField('${cat.id}',${i},'dev',this.value)"></td>
+        <td style="min-width:120px"><input type="text" ${dis} placeholder="策划备注..." value="${lsGet(k('note'))}" onchange="saveField('${cat.id}',${i},'note',this.value)"></td>
+        <td style="min-width:90px"><input type="text" ${dis} placeholder="如 #1234" value="${lsGet(k('issue'))}" onchange="saveField('${cat.id}',${i},'issue',this.value)"></td>
+        <td style="min-width:110px"><input type="date" ${dis} value="${lsGet(k('date'))}" onchange="saveField('${cat.id}',${i},'date',this.value)"></td>
+        <td style="text-align:center;width:60px">
+          <input type="checkbox" ${dis} ${isDone?'checked':''} onchange="toggleDone('${cat.id}',${i},this.checked)" title="是否完成">
+        </td>
+      </tr>`;
+    }).join('');
+
+    // ── ② 反馈条目 ──
+    const itemsHtml = cat.items.map(item=>`
+      <div class="item">
+        <div class="item-top">
+          <span class="item-id">#${item.id}</span>
+          ${typeTag(item.type)}
+          <span class="${confClass(item.conf)}">${item.conf}置信度</span>
+        </div>
+        <div class="item-zh">${item.zh}</div>
+        <div class="item-en">${item.en}</div>
+      </div>`).join('');
+
+    html += `
+    <div class="category-block ${mc}">
+      <div class="cat-header" onclick="toggleCat('${cat.id}')">
+        <span>${cat.icon}</span>
+        <span class="cat-title">${cat.title}</span>
+        ${priBadge}
+        <span class="cat-count">${cat.items.length} 条反馈</span>
+        <span class="module-tag">${moduleTag(cat.module)}</span>
+        <span class="arrow" id="arr-${cat.id}">▶</span>
+      </div>
+      <!-- ② 聚合完成度进度条 -->
+      <div class="cat-progress">
+        <div class="cp-row">
+          <span class="cp-label">完成进度</span>
+          <div class="cp-bar-wrap"><div class="cp-bar" id="cp-bar-${cat.id}" style="width:${p.pct}%"></div></div>
+          <span class="cp-pct" id="cp-pct-${cat.id}" style="color:${pctColor}">${p.pct}%</span>
+          <span style="font-size:11px;color:#8b949e">${p.done}/${p.total}项</span>
+        </div>
+      </div>
+      <div class="cat-body" id="body-${cat.id}">
+        <!-- ① 优化点可编辑表格 -->
+        <div class="solution-section">
+          <div class="sol-title">📋 优化方案跟进表</div>
+          <table class="sol-table">
+            <thead><tr>
+              <th>#</th>
+              <th>优化点描述</th>
+              <th>负责策划</th>
+              <th>负责程序</th>
+              <th>策划备注</th>
+              <th>易协作单号</th>
+              <th>完成时间</th>
+              <th>✅ 完成</th>
+            </tr></thead>
+            <tbody>${solRows}</tbody>
+          </table>
+        </div>
+        <!-- 反馈原文折叠展开 -->
+        <div class="items-section">
+          <span class="items-toggle" onclick="toggleItems('items-${cat.id}',this)">▶ 展开玩家原始反馈（${cat.items.length}条）</span>
+          <div id="items-${cat.id}" class="items-list">${itemsHtml}</div>
+        </div>
+      </div>
+    </div>`;
+  });
+  container.innerHTML = html || '<div style="text-align:center;padding:60px;color:#8b949e">无符合条件数据</div>';
+  updateGlobalProgress();
+}
+
+// ─── 交互事件 ────────────────────────────────────────────
+function toggleCat(catId) {
+  const body = document.getElementById(`body-${catId}`);
+  const arr = document.getElementById(`arr-${catId}`);
+  body.classList.toggle('open');
+  arr.classList.toggle('open');
+}
+function toggleItems(id, btn) {
+  const el = document.getElementById(id);
+  el.classList.toggle('open');
+  btn.textContent = el.classList.contains('open')
+    ? btn.textContent.replace('▶ 展开','▼ 收起')
+    : btn.textContent.replace('▼ 收起','▶ 展开');
+}
+function saveField(catId, solIdx, field, val) {
+  lsSave(lsKey(catId, solIdx, field), val);
+}
+function toggleDone(catId, solIdx, checked) {
+  lsSave(lsKey(catId, solIdx, 'done'), checked?'1':'0');
+  const row = document.getElementById(`row-${catId}-${solIdx}`);
+  if(row) { row.classList.toggle('done-row', checked); }
+  updateCatProgress(catId);
+}
+
+function filterModule(m, el) {
+  curModule = m;
+  document.querySelectorAll('.filter-bar .btn:not(.btn-export)').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  render();
+}
+function filterType(t, el) {
+  curType = t;
+  el.classList.add('active');
+  render();
+}
+
+// ─── ④ 导出 Excel ────────────────────────────────────────
+function exportExcel() {
+  const rows = [['问题分类','模块','优化点描述','负责策划','负责程序','策划备注','易协作单号','完成时间','是否完成']];
+  categories.forEach(cat => {
+    cat.solution.forEach((sol, i) => {
+      const k = (f) => lsKey(cat.id, i, f);
+      rows.push([
+        cat.title,
+        cat.module==='near'?'近战':'3C控制',
+        sol,
+        lsGet(k('planner')),
+        lsGet(k('dev')),
+        lsGet(k('note')),
+        lsGet(k('issue')),
+        lsGet(k('date')),
+        lsGet(k('done'),'0')==='1'?'✅ 已完成':'⬜ 未完成'
+      ]);
+    });
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  // 设置列宽
+  ws['!cols'] = [
+    {wch:24},{wch:10},{wch:40},{wch:10},{wch:10},{wch:20},{wch:12},{wch:12},{wch:10}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '优化跟进表');
+  const today = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `近战与控制优化跟进_${today}.xlsx`);
+}
+
+// ─── 初始化说明 ──────────────────────────────────────────
+// render() 由 trackingRef.on('value',...) 自动触发，无需手动调用
+</script>
+</body>
+</html>
