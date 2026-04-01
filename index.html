@@ -475,9 +475,28 @@ function lsSave(k, v) {
   trackingRef.child(k).set(v === '' ? null : v);
 }
 
+// ─── 数据自动备份（防止功能迭代时误删数据）────────────────
+// 每次页面加载时，把 /tracking 的数据快照备份到 /backup/{日期}
+const backupRef = db.ref('/backup');
+let hasBackedUp = false;  // 每次页面加载只备份一次
+
 // ─── 实时监听 Firebase 数据变化 ──────────────────────────
 trackingRef.on('value', snapshot => {
   fbData = snapshot.val() || {};
+
+  // 首次拿到数据时，自动备份（只有有数据才备份）
+  if(!hasBackedUp && Object.keys(fbData).length > 0) {
+    hasBackedUp = true;
+    const today = new Date().toISOString().slice(0, 10);  // 如 2026-04-01
+    backupRef.child(today).once('value', bSnap => {
+      // 当天已有备份则跳过，避免覆盖当天早期备份
+      if(!bSnap.exists()) {
+        backupRef.child(today).set(fbData);
+        console.log(`[Backup] 数据已备份至 /backup/${today}`);
+      }
+    });
+  }
+
   render();
 });
 
@@ -591,6 +610,7 @@ function render(fm, ft) {
         <td class="sol-text">${sol}</td>
         <td style="min-width:80px"><input type="text" ${dis} placeholder="策划姓名" value="${lsGet(k('planner'))}" onchange="saveField('${cat.id}',${i},'planner',this.value)"></td>
         <td style="min-width:80px"><input type="text" ${dis} placeholder="程序姓名" value="${lsGet(k('dev'))}" onchange="saveField('${cat.id}',${i},'dev',this.value)"></td>
+        <td style="min-width:80px"><input type="text" ${dis} placeholder="QA姓名" value="${lsGet(k('qa'))}" onchange="saveField('${cat.id}',${i},'qa',this.value)"></td>
         <td style="min-width:120px"><input type="text" ${dis} placeholder="策划备注..." value="${lsGet(k('note'))}" onchange="saveField('${cat.id}',${i},'note',this.value)"></td>
         <td style="min-width:90px"><input type="text" ${dis} placeholder="如 #1234" value="${lsGet(k('issue'))}" onchange="saveField('${cat.id}',${i},'issue',this.value)"></td>
         <td style="min-width:110px"><input type="date" ${dis} value="${lsGet(k('date'))}" onchange="saveField('${cat.id}',${i},'date',this.value)"></td>
@@ -641,6 +661,7 @@ function render(fm, ft) {
               <th>优化点描述</th>
               <th>负责策划</th>
               <th>负责程序</th>
+              <th>负责QA</th>
               <th>策划备注</th>
               <th>易协作单号</th>
               <th>完成时间</th>
@@ -716,7 +737,7 @@ function filterType(t, el) {
 
 // ─── ④ 导出 Excel ────────────────────────────────────────
 function exportExcel() {
-  const rows = [['问题分类','模块','优化点描述','负责策划','负责程序','策划备注','易协作单号','完成时间','是否完成']];
+  const rows = [['问题分类','模块','优化点描述','负责策划','负责程序','负责QA','策划备注','易协作单号','完成时间','是否完成']];
   categories.forEach(cat => {
     cat.solution.forEach((sol, i) => {
       const k = (f) => lsKey(cat.id, i, f);
@@ -726,6 +747,7 @@ function exportExcel() {
         sol,
         lsGet(k('planner')),
         lsGet(k('dev')),
+        lsGet(k('qa')),
         lsGet(k('note')),
         lsGet(k('issue')),
         lsGet(k('date')),
@@ -736,7 +758,7 @@ function exportExcel() {
   const ws = XLSX.utils.aoa_to_sheet(rows);
   // 设置列宽
   ws['!cols'] = [
-    {wch:24},{wch:10},{wch:40},{wch:10},{wch:10},{wch:20},{wch:12},{wch:12},{wch:10}
+    {wch:24},{wch:10},{wch:40},{wch:10},{wch:10},{wch:10},{wch:20},{wch:12},{wch:12},{wch:10}
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '优化跟进表');
